@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: slangdump-postgres
+    environment:
+      POSTGRES_DB: slangdump
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  spring:
+    build: 
+      context: ./slangdump-pick-n-roll
+    container_name: slangdump-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/slangdump
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=password
+      - AI_WORKER_URL=http://ai-worker:8000
+    depends_on:
+      - postgres
+      - ai-worker
+    volumes:
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+
+
+  ai-worker:
+    build:
+      context: ./slangdump-ai-solation
+    container_name: slangdump-ai-worker
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./slangdump-ai-solation/.env
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
