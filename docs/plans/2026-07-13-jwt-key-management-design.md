@@ -118,6 +118,31 @@ auth:
     public-key-location: ${AUTH_JWT_PUBLIC_KEY_LOCATION:classpath:keys/jwt-dev-public.pem}
 ```
 
+### Backend: guard against the dev-key fallback in production
+
+The resolution rule above means a blank `AUTH_JWT_PUBLIC_KEY` in production — a missing SSM
+parameter, a typo'd ARN, a misconfigured ECS task definition — resolves silently to the
+committed dev key. Because the dev key's private half is also committed (in the backend's
+test resources), that failure mode is not a crash: the app boots healthy and keeps serving
+traffic while verifying tokens against a key anyone who can read the repo can sign with.
+
+`ProductionKeyGuard` (`com.example.demo.config.ProductionKeyGuard`) closes this: at bean
+construction it re-resolves the public key exactly as `SecurityConfig` would, and throws —
+failing application startup outright — if that key is the dev key. It is annotated
+`@Configuration @Profile("prod")`, so it is inert in local dev and in the test suite, both of
+which rely on the dev-key fallback being reachable, and only active — and load-bearing — when
+the Spring `prod` profile is active for the process.
+
+That makes `SPRING_PROFILES_ACTIVE=prod` itself a required, security-relevant setting rather
+than an operational nicety: without it, `ProductionKeyGuard` does not exist as a bean and its
+check never runs, and the silent downgrade described above is possible again exactly as if
+the guard had never been written. The backend's `Dockerfile` now sets
+`SPRING_PROFILES_ACTIVE=prod` as the image default for this reason, so a deployment cannot
+accidentally run unguarded just because a task definition forgot to set it. The root
+`docker-compose.yml` explicitly overrides that back to a non-`prod` profile for local
+development, since local compose does not supply `AUTH_JWT_PUBLIC_KEY` and needs the dev-key
+fallback to stay reachable.
+
 ### Backend: extract PEM parsing
 
 `SecurityConfig` currently does two unrelated jobs — HTTP security configuration and
@@ -183,13 +208,16 @@ exactly one public key, so rotation is a coordinated deploy:
 This is a real, accepted cost: because the two services deploy as separate ECS tasks, there
 is a window in which one side has rotated and the other has not, and every request 401s.
 
-`slangdump-ai-solation/docs/secrets-management.md` must therefore be corrected. It currently
-lists a planned `JWT_SECRET` (stale HS256-era thinking; the system uses an RS256 keypair) and
-promises that the application "must accept the previous key for verification during rotation
-window — plan dual-key support into the auth implementation from day one." That promise will
-not be true. The doc is updated to describe the real procedure above, list the two real
-parameters, and record dual-key verification as the known upgrade path for zero-downtime
-rotation. A security doc that overstates the system's guarantees is worse than a blunt one.
+`slangdump-ai-solation/docs/secrets-management.md` does not exist on this branch's base — it
+was only ever added on the unrelated `feat/lyrics-translation-chain` branch, never on
+`master`. That branch's version lists a planned `JWT_SECRET` (stale HS256-era thinking; the
+system uses an RS256 keypair) and promises that the application "must accept the previous key
+for verification during rotation window — plan dual-key support into the auth implementation
+from day one." That promise will not be true, so the doc is not simply carried over as-is: it
+is created on this branch — recovered from that other branch's content as a starting point —
+and rewritten to describe the real procedure above, list the two real parameters, and record
+dual-key verification as the known upgrade path for zero-downtime rotation, rather than a
+promise. A security doc that overstates the system's guarantees is worse than a blunt one.
 
 ## Testing
 

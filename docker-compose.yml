@@ -19,6 +19,11 @@ services:
     ports:
       - "8080:8080"
     environment:
+      # The image defaults SPRING_PROFILES_ACTIVE=prod (see slangdump-pick-n-roll/Dockerfile)
+      # so a deployment can't accidentally boot unguarded. Local compose doesn't supply
+      # AUTH_JWT_PUBLIC_KEY, so it deliberately overrides back to a non-prod profile here —
+      # otherwise ProductionKeyGuard would resolve the dev key and refuse to start.
+      - SPRING_PROFILES_ACTIVE=local
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/slangdump
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=password
