@@ -97,10 +97,17 @@ Dependencies (versions managed by the Spring Boot BOM; all confirmed to resolve)
 
 No exporter dependency is added, because no spans are exported.
 
-Sampling must be set to **always sample** (`management.tracing.sampling.probability: 1.0`). The
-default samples only 10% of traces, and an unsampled trace produces log lines with no trace ID —
-so 90% of production requests would be uncorrelated, which defeats the entire purpose. There is no
-cost argument against full sampling here, since nothing is exported.
+Sampling is set to **always sample** (`management.tracing.sampling.probability: 1.0`), but note
+what this setting actually controls: it governs which spans would be **exported** if an exporter
+existed. It does **not** control whether trace/span ids appear in log lines. This was empirically
+verified: at `probability: 0.0`, with no inbound `traceparent`, the backend still emitted
+`traceId`/`spanId` in its log lines and still propagated `traceparent` to the AI worker.
+OpenTelemetry's non-recording ("dropped") spans still carry a valid `SpanContext`, and
+Micrometer's MDC correlation stamps the id from that context regardless of the sampling decision.
+Log correlation would work identically at `probability: 0.0` today. `1.0` is kept anyway because
+it is harmless (no exporter, so no cost) and becomes correct the moment an exporter is added —
+but the next engineer who adds one and dials sampling down should not believe they are destroying
+log correlation, because they would not be.
 
 ### AI worker: JSON logs and trace correlation
 
