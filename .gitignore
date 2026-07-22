@@ -1,3 +1,8 @@
 slangdump-poster/
 slangdump-pick-n-roll/
 slangdump-ai-solation/
+
+# Key material staging area. The production JWT private key lives here before it is
+# uploaded to SSM Parameter Store; it must never reach git.
+jwt-keys/
+*.pem
