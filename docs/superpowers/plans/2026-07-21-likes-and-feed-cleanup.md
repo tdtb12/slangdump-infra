@@ -139,7 +139,6 @@ package com.example.demo.repository
 
 import com.example.demo.model.PostLike
 import org.springframework.data.jpa.repository.JpaRepository
-import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import org.springframework.transaction.annotation.Transactional
@@ -175,7 +174,8 @@ interface PostLikeRepository : JpaRepository<PostLike, Long> {
 
     fun existsByPostIdAndUserId(postId: Long, userId: Long): Boolean
 
-    @Modifying
+    // Derived deletes need their own transaction; @Modifying is not used here because it
+    // only applies to @Query methods.
     @Transactional
     fun deleteByPostIdAndUserId(postId: Long, userId: Long): Long
 }
@@ -407,11 +407,14 @@ class PostLikeService(
             ?.user
             ?.id
 
-    /** Counts for a page of posts. Unliked posts map to 0. */
+    /** Counts for a page of posts. Every requested id gets an entry; unliked posts map to 0. */
     fun countsFor(postIds: Collection<Long>): Map<Long, Long> {
         if (postIds.isEmpty()) return emptyMap()
-        return postLikeRepository.countsByPostIds(postIds)
+        val counted = postLikeRepository.countsByPostIds(postIds)
             .associate { (it[0] as Number).toLong() to (it[1] as Number).toLong() }
+        // The GROUP BY omits posts with no likes. Backfill them so every requested id has
+        // an entry and no caller can mistake "absent" for "unknown".
+        return postIds.associateWith { counted[it] ?: 0L }
     }
 
     /** Which of these posts the viewer liked. Empty when signed out — no query is issued. */
@@ -1911,7 +1914,8 @@ describe('SideNavBar drawer behaviour', () => {
     const closed = render(<SideNavBar isOpen={false} />).container.querySelector('aside')!;
     expect(closed.className).toContain('-translate-x-full');
 
-    const open = render(<SideNavBar isOpen />).container.querySelectorAll('aside')[1];
+    // render() builds a fresh container each call, so this is that container's only aside.
+    const open = render(<SideNavBar isOpen />).container.querySelector('aside')!;
     expect(open.className).toContain('translate-x-0');
     expect(open.className).not.toContain('-translate-x-full');
   });

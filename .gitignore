@@ -1,3 +1,7 @@
 slangdump-poster/
 slangdump-pick-n-roll/
 slangdump-ai-solation/
+
+# Local dev signing keys for the BFF's RS256 tokens. Generated per-machine and never
+# shared — a committed private key would let anyone mint tokens the backend trusts.
+*.pem
