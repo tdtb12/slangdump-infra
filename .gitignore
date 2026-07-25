@@ -2,6 +2,7 @@ slangdump-poster/
 slangdump-pick-n-roll/
 slangdump-ai-solation/
 
-# Local dev signing keys for the BFF's RS256 tokens. Generated per-machine and never
-# shared — a committed private key would let anyone mint tokens the backend trusts.
+# Key material staging area. The production JWT private key lives here before it is
+# uploaded to SSM Parameter Store; it must never reach git.
+jwt-keys/
 *.pem

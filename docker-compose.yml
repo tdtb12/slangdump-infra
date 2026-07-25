@@ -19,6 +19,15 @@ services:
     ports:
       - "8080:8080"
     environment:
+      # The image defaults SPRING_PROFILES_ACTIVE=prod (see slangdump-pick-n-roll/Dockerfile)
+      # so a deployment can't accidentally boot unguarded. Local compose doesn't supply
+      # AUTH_JWT_PUBLIC_KEY, so it deliberately overrides back to a non-prod profile here —
+      # otherwise ProductionKeyGuard would resolve the dev key and refuse to start.
+      - SPRING_PROFILES_ACTIVE=local
+      # application.yml defaults spring.flyway.enabled=false (production migrates via the
+      # release_command's 'migrate' profile). Local is single-instance with no PgBouncer,
+      # so startup migration is safe and convenient — opt back in here.
+      - SPRING_FLYWAY_ENABLED=true
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/slangdump
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=password
@@ -26,14 +35,16 @@ services:
     depends_on:
       - postgres
       - ai-worker
-    volumes:
-      - ./uploads:/app/uploads
     restart: unless-stopped
 
 
   ai-worker:
     build:
       context: ./slangdump-ai-solation
+    # The image CMD binds "::" for Fly's IPv6-only 6PN, but uvicorn's "::" is
+    # IPv6-ONLY (asyncio sets IPV6_V6ONLY), so it is unreachable over Docker's
+    # IPv4-only Compose bridge. Override to IPv4 for local dev.
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
     container_name: slangdump-ai-worker
     ports:
       - "8000:8000"
