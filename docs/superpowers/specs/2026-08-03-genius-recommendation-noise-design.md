@@ -93,7 +93,7 @@ def _fold_artist(s: str) -> str:
     return "".join(c for c in s if c.isalnum()).casefold()
 
 
-def _matches_singer(line: str, singer: str) -> bool:
+def _names_the_singer(line: str, singer: str) -> bool:
     folded = _fold_artist(singer)
     if len(folded) < _MIN_FOLDED_ARTIST_LEN:
         # Short stage names (IU, Zico) are exactly the ones that collide with
@@ -108,11 +108,11 @@ def _matches_singer(line: str, singer: str) -> bool:
 Scanning line by line:
 
 1. Not a marker -> keep the line, advance.
-2. Marker -> drop it, then examine the next **six non-blank lines** as three
-   candidate `(title, artist)` pairs. Fewer than six available means no block;
-   keep everything.
-3. Test `_matches_singer` on each of the three artist slots. If none match, keep
-   all six lines.
+2. Marker -> collect up to the next **six non-blank lines** as candidate
+   `(title, artist)` pairs. Fewer than six available simply means fewer pairs,
+   so a block ending the paste is still handled.
+3. Test `_names_the_singer` on each artist slot. If none match, consume nothing —
+   the marker is left for the pattern loop and every other line is kept.
 4. Otherwise consume everything from the marker through **the last matching
    artist slot** — both halves of every pair up to it, plus any blank lines that
    fell between them. Lines beyond it are kept verbatim, blank lines included.
@@ -216,7 +216,7 @@ between what the cleaner must delete and what it must never delete.
 | Trailing `artist / artist / other` | Marker + four lines gone, two lines residue |
 | No slot matches the singer | Only the marker is removed |
 | Two recommendations followed by real lyrics | Four lines gone, **both lyric lines preserved** |
-| Fewer than six non-blank lines after the marker | Only the marker is removed |
+| A block ending the paste, one recommendation only | Marker and pair removed |
 | Marker followed directly by real lyrics | Only the marker is removed |
 | `LIL UZI VERT` / `Lil-Uzi-Vert` casing and punctuation variants | Matched |
 | Artist rendered `Jung Kook (정국)`, singer typed `Jung Kook` | Matched |
@@ -226,9 +226,10 @@ between what the cleaner must delete and what it must never delete.
 | Blank lines interleaved inside a block | Consumed along with their pair |
 | Existing `GENIUS_CHROME` fixture | Still rejected with 422 |
 
-The four existing `_clean_lyrics(...)` call sites in that file need the new
-`singer` argument. It is a required parameter rather than one defaulting to `""`,
-so every call site is surfaced by the change instead of silently going inert.
+The three existing `_clean_lyrics(...)` call sites in that file, plus the one in
+`process()`, need the new `singer` argument. It is a required parameter rather
+than one defaulting to `""`, so every call site is surfaced by the change instead
+of silently going inert.
 
 Following the project's test-naming convention, each case carries a docstring or
 `ids=` label describing it in words.
