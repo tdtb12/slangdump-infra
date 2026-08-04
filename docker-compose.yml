@@ -41,10 +41,9 @@ services:
   ai-worker:
     build:
       context: ./slangdump-ai-solation
-    # The image CMD binds "::" for Fly's IPv6-only 6PN, but uvicorn's "::" is
-    # IPv6-ONLY (asyncio sets IPV6_V6ONLY), so it is unreachable over Docker's
-    # IPv4-only Compose bridge. Override to IPv4 for local dev.
-    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    # Image CMD already binds 0.0.0.0 (see slangdump-ai-solation/Dockerfile — Fly Proxy
+    # reaches the app over IPv4), which also works over Docker's IPv4 Compose bridge, so
+    # no command override is needed here.
     container_name: slangdump-ai-worker
     ports:
       - "8000:8000"
