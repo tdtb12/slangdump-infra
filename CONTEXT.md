@@ -42,6 +42,12 @@ Each is written by the translator and shown as its own section of a drop.
 Their boundaries are load-bearing: prose that strays across them is wrong, not
 merely untidy.
 
+**Artist Background**:
+Prose about the artist behind a Song — who they are, where they come from, what
+they are known for. Belongs to the Song, so it must not describe the individual
+track or the release.
+_Avoid_: Artist bio, artist info
+
 **Album Context**:
 Prose about an Album as a whole — its place in the artist's discography, its
 themes, sound and reception. Written once per Album and shown on **every** Song
