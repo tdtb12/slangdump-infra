@@ -1,6 +1,6 @@
 # Stripping Genius Recommendation Blocks From Pasted Lyrics
 
-**Date:** 2026-08-03
+**Date:** 2026-08-03 (revised 2026-08-04)
 **Repos touched:** `slangdump-ai-solation` (Python worker) only
 
 ## Summary
@@ -16,25 +16,47 @@ delete the lines after it, and no literal pattern can — a recommended song tit
 is textually indistinguishable from a lyric line. Those lines are sent to Gemini,
 translated, stored, and rendered as if they were part of the song.
 
-The fix is a bounded structural rule anchored on the marker, using the one piece
-of information a pattern does not have: `req.singer`.
+The fix is a structural rule anchored on the marker: delete the marker and the
+next six non-blank lines.
 
-### What the real samples show
+## Revision: why this is not the singer-anchored rule
 
-Two pastes observed in the wild, both three recommendations / six lines:
+The first version of this design used `req.singer` — the artist the user typed —
+to decide where the block ends. Test every artist slot, consume through the last
+one that names the singer, consume nothing if none do. The reasoning was that a
+lyric line does not name the singer, so the boundary could never run past the
+widget into the song.
 
-- All three by the song's own artist.
-- Artists **interleaved**: the song's artist, a different artist, the song's
-  artist again.
+**A real paste falsified it.** Searching for *Christina Perri — A Thousand Years*
+produced this block:
 
-The second shape is what drives the design. A different artist is not a separate
-category of block to handle elsewhere — it appears *inside* an otherwise ordinary
-block, so any rule that stops at the first unrecognised artist stops in the
-middle of the noise.
+```
+You might also like
+"Slut!" (Taylor's Version) [From the Vault]
+Taylor Swift
+Hate You
+Jung Kook (정국)
+Now That We Don't Talk (Taylor's Version) [From the Vault]
+Taylor Swift
+```
 
-The second sample also showed an artist rendered as `Name (본명)` — an English
-stage name with a parenthesised native-script alias. The user typed only the
-stage name.
+Not one of the three recommendations is by Christina Perri. Genius recommends
+from a global pool, not from the song's own artist, so on a typical page **no
+slot matches the singer and the rule consumes nothing** — it left every noise
+line in place. The earlier sample where all three recommendations were by the
+song's own artist (Lil Uzi Vert) was the exception, not the pattern.
+
+The same finding removes the objection that produced the singer rule. A fixed
+six-line delete was rejected because Genius might render fewer than three
+recommendations and the delete would run into the song. That risk belongs to a
+*per-artist* recommender, which can run out of material. A global one always has
+three items to show. Three independent samples carry three pairs each, and the
+markup agrees: `RecommendedSongs__Body` renders three `<a>` elements.
+
+So the singer machinery — `_fold_artist`, `_names_the_singer`, the parenthetical
+stripping for `Jung Kook (정국)`, the short-name floor for `IU` — is deleted
+rather than kept alongside the new rule. It is a disproven heuristic; leaving it
+in would only be complexity that never fires.
 
 ## Why the fix belongs in the worker, and nowhere else
 
@@ -44,147 +66,91 @@ lines (`flatMap` returning `[]`). It never renders the raw paste directly. So a
 line the worker declines to return is automatically absent from the display.
 Cleaning in `_clean_lyrics` propagates to rendering for free.
 
-**Asking the model to judge was rejected** — see "Rejected alternatives" below.
+Spring needs no change either; it forwards the paste verbatim.
 
 ## The rule
 
-New `_strip_recommendation_blocks(lyrics, singer)` running **before** the
-existing `_LYRIC_NOISE_PATTERNS` loop. The order is load-bearing: the existing
-marker pattern deletes the only anchor the structural rule has.
+`_strip_recommendation_blocks(lyrics)` runs **before** the existing
+`_LYRIC_NOISE_PATTERNS` loop. The order is load-bearing: the existing marker
+pattern deletes the only anchor the structural rule has.
 
 ```
 req.lyrics
-  -> _strip_recommendation_blocks(lyrics, req.singer)   # new: marker + confirmed pairs
-  -> _LYRIC_NOISE_PATTERNS loop                          # existing: remaining chrome
-  -> empty-content guard (422)                           # existing
+  -> _strip_recommendation_blocks(lyrics)   # new: marker + six lines
+  -> _LYRIC_NOISE_PATTERNS loop             # existing: remaining chrome
+  -> empty-content guard (422)              # existing
   -> Gemini
 ```
 
-`_clean_lyrics` therefore takes a new `singer` argument. Spring and the frontend
-are untouched; `TranslationRequest.singer` already carries the value.
-
-### Artist comparison
-
-```python
-_MIN_FOLDED_ARTIST_LEN = 3
-
-# NFKC folds fullwidth parens onto ASCII; the CJK bracket forms it leaves alone
-# are listed explicitly.
-_PARENTHETICAL = re.compile(r"[(\[【〔][^)\]】〕]*[)\]】〕]")
-
-
-def _fold_artist(s: str) -> str:
-    """NFKC, drop parenthesised asides, keep only alphanumerics, casefold.
-
-    Folds "Lil Uzi Vert", "LIL UZI VERT" and "Lil-Uzi-Vert" onto one key. The
-    singer value is typed by the user and rarely matches Genius's rendering
-    character for character, so a strict comparison would clear almost nothing.
-
-    Dropping the parenthetical is what makes "Jung Kook (정국)" and
-    "BTS (방탄소년단)" match a user who typed only the stage name. Substring
-    containment would do that too, but it also matches a short artist name
-    buried inside an unrelated word, so equality on the reduced form is used
-    instead. If removing the parenthetical would leave nothing, it is kept.
-    """
-    s = unicodedata.normalize("NFKC", s)
-    stripped = _PARENTHETICAL.sub(" ", s)
-    if any(c.isalnum() for c in stripped):
-        s = stripped
-    return "".join(c for c in s if c.isalnum()).casefold()
-
-
-def _names_the_singer(line: str, singer: str) -> bool:
-    folded = _fold_artist(singer)
-    if len(folded) < _MIN_FOLDED_ARTIST_LEN:
-        # Short stage names (IU, Zico) are exactly the ones that collide with
-        # ordinary lyric text once punctuation and case are discarded. Fall back
-        # to strict equality rather than folding them.
-        return _canonical(line) == _canonical(singer)
-    return _fold_artist(line) == folded
-```
-
-### Consumption boundary
-
 Scanning line by line:
 
-1. Not a marker -> keep the line, advance.
-2. Marker -> collect up to the next **six non-blank lines** as candidate
-   `(title, artist)` pairs. Fewer than six available simply means fewer pairs,
-   so a block ending the paste is still handled.
-3. Test `_names_the_singer` on each artist slot. If none match, consume nothing —
-   the marker is left for the pattern loop and every other line is kept.
-4. Otherwise consume everything from the marker through **the last matching
-   artist slot** — both halves of every pair up to it, plus any blank lines that
-   fell between them. Lines beyond it are kept verbatim, blank lines included.
+1. Not a marker (`^\s*You might also like\s*$`, full line) → keep it, advance.
+2. Marker → drop it, then drop the next **six non-blank** lines. Blank lines
+   encountered inside the block go too and do not count toward the six: Genius's
+   plain text sometimes separates a title from its artist, and counting the gap
+   would close the block early and leave the tail of the widget in the song.
+3. Fewer than six lines available — a block ending the paste — means drop what is
+   there.
 
 Multiple markers in one paste are handled by the outer scan.
 
-Step 4 is the whole design. A fixed six-line delete was considered and is
-strictly worse:
+No comparison against the singer at any point. `_clean_lyrics` takes only
+`lyrics`.
 
-| Block | Slots | Consumed | Outcome |
-|---|---|---|---|
-| Artist / other / artist | ✓ ✗ ✓ | 6 | Fully cleared (real sample) |
-| Artist / artist / other | ✓ ✓ ✗ | 4 | Cleared to the last confirmed pair; two lines residue |
-| Only two recommendations, then real lyrics | ✓ ✓ ✗ | 4 | Recommendations cleared, **lyrics untouched** |
+The `You might also like` entry stays in `_LYRIC_NOISE_PATTERNS`. It is no longer
+the main path, but it still catches the concatenated variant described under
+"Known limitation", where the full-line anchor misses.
 
-The third row is why the boundary is data-driven rather than fixed. Genius is
-not contractually obliged to render three recommendations, and a fixed six-line
-delete would silently eat two lyric lines whenever it renders fewer. Trailing
-by the last confirmed match makes that failure mode structurally impossible: a
-lyric line does not match the singer's name, so the consumption stops before it.
+### Logging
 
-The cost is the second row — a block whose *trailing* recommendations are by
-other artists leaves residue. Residue is always preferable to deleting lyrics.
+One INFO line per call when anything was removed:
 
-### Why this is safe
+```
+Removed %d Genius recommendation line(s) across %d block(s)
+```
 
-Safety comes from three independent bounds:
+Counts only — the project forbids writing lyric text to logs. A per-block count
+below six means a widget rendered short, which is the one condition under which
+this rule reaches into the song. Since the loss is otherwise silent, this line is
+the only trace it would leave.
 
-- The window opens only immediately after a literal marker line.
-- It closes after at most three pairs.
-- It closes earlier still, at the last line positively confirmed as the known
-  artist.
+## Known cost, stated plainly
 
-For a real lyric line to be deleted it must fall within six lines of a marker,
-sit in an artist slot, fold to exactly the singer's name, **and** have a later
-slot in the same window also match.
+If Genius ever renders fewer than three recommendations, the delete runs into the
+song and takes lyric lines. **There is no longer any check that would stop it** —
+the singer comparison was that check, and it did not work. This is accepted, not
+overlooked, and it is pinned by
+`test_a_block_with_fewer_than_three_recommendations_takes_lyrics_with_it` so it
+stays a recorded decision rather than resurfacing later as a bug report.
 
-This matters because `tests/test_lyric_input_validation.py` already establishes
-the priority: deleting real lyrics is the worse failure, because it is silent —
-no error, just a song translated with holes in it. The project also forbids
-writing lyrics to logs, so there is no post-hoc way to discover what was lost;
-only a count could be logged.
+What bounds it:
 
-## Deliberate residue
+- the window opens only immediately after a literal full-line marker;
+- it closes after six lines;
+- it logs a count when it fires.
 
-Two cases leave noise behind, both accepted and both pinned by tests:
-
-- **Trailing recommendations by other artists** — consumption stops at the last
-  confirmed pair.
-- **No recommendation by the song's own artist** — nothing is confirmed, so only
-  the marker is removed.
-
-These are recorded rather than assumed, so a future change can see what the rule
-does and does not cover.
+The project's stated priority is that deleting real lyrics is the worse failure,
+because it is silent. That priority is unchanged; what changed is the evidence
+about how likely the deletion is. A rule that reliably deletes nothing is not
+safer than one that occasionally over-deletes — it just fails in a way that is
+easier to ignore.
 
 ## Rejected alternatives
 
+**Singer-anchored boundary.** Shipped, falsified, removed. See the revision
+section above.
+
 **Per-pair gating** (consume pairs while the artist matches, stop at the first
-that does not). This was the original design and the real samples killed it: the
-interleaved `artist / other / artist` block would consume one pair, stop at the
-second, and leave four lines of noise. Testing every slot before choosing a
-boundary is what handles interleaving.
+that does not). Rejected before the singer rule shipped: the interleaved
+`artist / other / artist` block would consume one pair, stop at the second, and
+leave four lines of noise. Moot now, since no artist comparison happens at all.
 
 **A prompt-level backstop.** Adding a rule to `prompts/translate.md` telling
-Gemini to ignore recommendation blocks was considered for the residue cases and
-rejected on two grounds.
+Gemini to ignore recommendation blocks, rejected on two grounds.
 
-*It has no anchor.* By the time the prompt is built, the marker has been removed
-by `_LYRIC_NOISE_PATTERNS`. The model would receive orphan lines with no more
-information than the deterministic rule had. Preserving the marker whenever a
-block went unconfirmed would restore the anchor, but that is extra conditional
-state in the cleaner to serve a minority case.
+*It has no anchor.* By the time the prompt is built, the marker has been removed.
+The model would receive orphan lines with no more information than the
+deterministic rule had.
 
 *The prompt is already overloaded.* The comment at `llm_service.py:32-40` records
 a production incident where this prompt drove 22,612 thought tokens (92% of the
@@ -193,43 +159,46 @@ mandates Google Search grounding, three 150-200 word essays, and per-line
 alignments and annotations in a single call. Adding instructions has a measured
 cost here.
 
-Revisit if residue turns out to be common in practice; preserving the marker for
-unconfirmed blocks is the design to reach for then.
-
 ## Known limitation
 
 Genius sometimes concatenates chrome onto an adjacent line rather than emitting
 it standalone — the same file already documents the
 `See <Artist> LiveGet tickets as low as $46` variant. A concatenated marker
-defeats the full-line anchor and the rule degrades to today's behaviour. Not
-handled; the looser existing pattern still removes what it removes today.
+defeats the full-line anchor and the rule degrades to today's behaviour: the
+looser `_LYRIC_NOISE_PATTERNS` entry removes the marker text and the six
+recommendation lines survive. Not handled.
 
 ## Testing
 
-Extending `tests/test_lyric_input_validation.py`, following its existing split
-between what the cleaner must delete and what it must never delete.
+In `tests/test_lyric_input_validation.py`, following its existing split between
+what the cleaner must delete and what it must never delete.
 
 | Case | Expected |
 |---|---|
-| Three recommendations, all by the song's artist, real lyrics on both sides | All seven lines gone, lyrics intact |
-| Interleaved `artist / other / artist` | All seven lines gone (the real sample) |
-| Trailing `artist / artist / other` | Marker + four lines gone, two lines residue |
-| No slot matches the singer | Only the marker is removed |
-| Two recommendations followed by real lyrics | Four lines gone, **both lyric lines preserved** |
-| A block ending the paste, one recommendation only | Marker and pair removed |
-| Marker followed directly by real lyrics | Only the marker is removed |
-| `LIL UZI VERT` / `Lil-Uzi-Vert` casing and punctuation variants | Matched |
-| Artist rendered `Jung Kook (정국)`, singer typed `Jung Kook` | Matched |
-| Singer `IU`, lyric line containing `IU` | Folding disabled, lyric preserved |
-| A lyric line equal to the singer's name, far from any marker | Preserved |
+| Three recommendations, all by the song's own artist (Lil Uzi Vert sample) | Marker and all six lines gone, lyrics intact |
+| Three recommendations, none by the page's artist (Christina Perri sample) | Same — the rule does not distinguish them |
+| A block ending the paste, one recommendation only | Marker and the two lines it has removed |
+| Two recommendations followed by real lyrics | Six lines taken, **the two lyric lines are lost** — the known cost, pinned |
+| Lines that look like recommendations with no marker before them | All preserved |
 | Two recommendation blocks in one paste | Both handled independently |
-| Blank lines interleaved inside a block | Consumed along with their pair |
-| Existing `GENIUS_CHROME` fixture | Still rejected with 422 |
+| Blank lines interleaved inside a block | Consumed with it, not counted toward six |
+| Existing `GENIUS_CHROME` fixture | Still cleans to nothing, still 422 |
 
-The three existing `_clean_lyrics(...)` call sites in that file, plus the one in
-`process()`, need the new `singer` argument. It is a required parameter rather
-than one defaulting to `""`, so every call site is surfaced by the change instead
-of silently going inert.
+The two singer-shaped samples are one parametrized test, because with the singer
+comparison gone they exercise the same code path; the `ids=` record where each
+came from.
 
-Following the project's test-naming convention, each case carries a docstring or
-`ids=` label describing it in words.
+Seven tests asserting singer-matching behaviour were deleted with the machinery
+they covered (casing and punctuation folding, the parenthesised alias, the
+two-letter stage name floor, trailing-residue and short-block boundaries).
+
+### Mutation results
+
+The tests were checked against four mutants, each killed:
+
+| Mutant | Result |
+|---|---|
+| `_RECOMMENDATION_LINES = 5` | 5 failed |
+| `_RECOMMENDATION_LINES = 7` | 5 failed |
+| Blank lines count toward the six | 1 failed |
+| Consume without requiring a marker | 21 failed |
