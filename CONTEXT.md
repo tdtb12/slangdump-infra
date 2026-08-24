@@ -10,11 +10,40 @@ same song reuse one translation.
 ### Content
 
 **Song**:
-The unit of shared translation — one artist's one track, translated once and
-reused by every Post that references it. Identified by artist and song name,
-together with the Translator that produced it. Neither the album nor the lyrics
-take part.
+The unit of shared translation — one track, translated once and reused by every
+Post that references it. Identified by its Credited Artists, its song name, and
+the Translator that produced it. The Credited Artists count as a *set*: the same
+collaboration billed in either order is one Song. Neither the album, the Featured
+Artists, nor the lyrics take part.
 _Avoid_: Track, Translation
+
+**Artist**:
+A musical act, and the owner of its own Artist Background. One record per act,
+shared by every Song it performs on and every Album filed under it.
+An act billed as a unit is **one** Artist, not several: Silk Sonic is one Artist;
+Bruno Mars and Anderson .Paak billed jointly are two. Nothing can enforce that
+distinction — it is a fact about the release, known only to the author — and
+getting it wrong forks the translation.
+_Avoid_: Singer, Band, Performer (which names a role, not an act)
+
+**Credited Artist**:
+An Artist the Song is billed to, before any `feat.`. At least one, and the first
+is the **Lead** — the Artist the Album is filed under. Each Credited Artist has
+their Artist Background shown on the drop.
+_Avoid_: Primary artist, Co-artist (both name a position, not the concept)
+
+**Featured Artist**:
+A guest on a Song. An attribute of the Song, like the Album — never part of its
+identity, and never given an Artist Background section on that drop. Their part
+in the track belongs in the Song Meaning. The same Artist may be Credited on one
+Song and Featured on another.
+_Avoid_: Feature (the noun for the role), Guest artist
+
+**Performer**:
+The link between a Song and an Artist, carrying the role (Credited or Featured)
+and the position within that role. Where billing order lives — a Song's identity
+deliberately ignores it, but the display does not.
+_Avoid_: Credit, Artist role
 
 **Post**:
 One user's drop of a Song on a given day: the social wrapper carrying author,
@@ -46,7 +75,8 @@ _Avoid_: Engine, Provider (that names only half of a Translator)
 **Active Translator**:
 The single Translator every new Song is made with. Exactly one exists at a time.
 Changing it never rewrites an existing Song or Post — those keep the Translator
-they were made with, permanently.
+they were made with, permanently. (An Artist Background is the one exception to
+that permanence, and it belongs to the Artist rather than to the Song.)
 _Avoid_: Default model, Current model
 
 ### People
@@ -75,20 +105,27 @@ Their boundaries are load-bearing: prose that strays across them is wrong, not
 merely untidy.
 
 **Artist Background**:
-Prose about the artist behind a Song — who they are, where they come from, what
-they are known for. Belongs to the Song, so it must not describe the individual
-track or the release.
+Prose about an Artist — who they are, where they come from, what they are known
+for. Belongs to the **Artist**, not to any Song, so it must not describe an
+individual track or release, and one drop shows one section per Credited Artist.
+
+The only prose here that is **rewritten**: it is refreshed when it is older than
+six months or when a new Album is discovered for that Artist, and the rewrite
+changes every Post that Artist appears on, including published permalinks. An
+Album Context and a Song Meaning, once written, stand forever.
 _Avoid_: Artist bio, artist info
 
 **Album Context**:
 Prose about an Album as a whole — its place in the artist's discography, its
-themes, sound and reception. Written once per Album and shown on **every** Song
-belonging to it, so it must never describe an individual track.
+themes, sound and reception. Scoped to the **Lead** Credited Artist's
+discography. Written once per Album and shown on **every** Song belonging to it,
+so it must never describe an individual track.
 _Avoid_: Album background, Album notes
 
 **Song Meaning**:
 Prose about one Song — its themes, narrative and impact. The correct home for
-anything track-specific, including a track's role on its album.
+anything track-specific, including a track's role on its album and what a
+Featured Artist contributes to it.
 _Avoid_: Song analysis, Interpretation
 
 ### Lyric forms
