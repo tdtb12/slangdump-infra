@@ -1,5 +1,10 @@
 # A Song is identified by artist and song name alone
 
+> **Superseded by ADR-0004.** A Song is billed to a *set* of credited artists,
+> not one, and `artist_norm` holds them sorted and joined. Everything below about
+> why the album and the lyrics stay out of the key is unchanged and still the
+> reasoning in force.
+
 A Song is the unit of shared translation, keyed on
 `(artist_norm, song_name_norm, llm_model_id)`. Neither the album nor the lyrics
 participate. The first user to post a given artist + song name causes the

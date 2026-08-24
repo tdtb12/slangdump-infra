@@ -19,10 +19,13 @@ Two of them keep a glossary; the third borrows the root one.
   `/api/v1/...`. The browser never reaches Spring directly.
 - **Spring API → AI worker**: synchronous HTTP over Fly private networking. Spring absorbs
   the 20–60s translation on a background thread so no caller ever waits on it.
-- **Shared vocabulary**: `Post`, `Song`, `Album` and `Canonical Line` mean the same thing in
-  both glossaries and are wire-level contracts. `Canonical Line` is the load-bearing one —
-  both sides must normalise identically or no stored translation will ever match a reader's
-  paste.
+- **Shared vocabulary**: `Post`, `Song`, `Album`, `Artist` and `Canonical Line` mean the same
+  thing in both glossaries and are wire-level contracts. `Canonical Line` is the load-bearing
+  one — both sides must normalise identically or no stored translation will ever match a
+  reader's paste. **Artist names are the second such contract**: the worker's `_artist_key`
+  mirrors Spring's `SongIdentity.normalize`, and Spring discards any background naming an
+  artist it cannot match — so a divergence there looks like a model that keeps writing about
+  people who are not on the song.
 - **Divergence to know about**: the root glossary lists **Post** with _Avoid: Drop (in
   code)_, while the frontend names the editor a **Daily Drop**. Deliberate — the *act* is a
   Daily Drop, the *thing* is a Post.
