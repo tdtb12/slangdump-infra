@@ -49,6 +49,25 @@ Changing it never rewrites an existing Song or Post — those keep the Translato
 they were made with, permanently.
 _Avoid_: Default model, Current model
 
+### People
+
+**User**:
+One person's account, identified by their email address. Two sign-ins with
+different providers but the same email are one User, not two.
+_Avoid_: Account, Member, Profile
+
+**Username**:
+The public name a User is known by, written `@name`. Chosen by the User, unique
+across the site, and the only name of theirs anyone else sees — the name their
+provider knows them by is never shown. Changing it changes it everywhere at
+once, including on drops made before the change.
+_Avoid_: User id (that is the internal key), Handle, Display name, Screen name
+
+**Author**:
+A User in relation to a Post they dropped. Not a separate kind of person —
+every User is the Author of their own drops and of nothing else.
+_Avoid_: Poster, Owner, Creator
+
 ### Generated prose
 
 Each is written by the Translator and shown as its own section of a drop.
