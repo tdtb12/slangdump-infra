@@ -11,8 +11,9 @@ same song reuse one translation.
 
 **Song**:
 The unit of shared translation — one artist's one track, translated once and
-reused by every Post that references it. Identified by artist and song name
-only.
+reused by every Post that references it. Identified by artist and song name,
+together with the Translator that produced it. Neither the album nor the lyrics
+take part.
 _Avoid_: Track, Translation
 
 **Post**:
@@ -36,6 +37,18 @@ absent it may be resolved during translation. A Song with no Album is a
 standalone single.
 _Avoid_: Record, Release, Project
 
+**Translator**:
+The model that produced a Song's translation. Part of a Song's identity, so the
+same track under two Translators is two Songs, each with its own prose and its
+own Posts.
+_Avoid_: Engine, Provider (that names only half of a Translator)
+
+**Active Translator**:
+The single Translator every new Song is made with. Exactly one exists at a time.
+Changing it never rewrites an existing Song or Post — those keep the Translator
+they were made with, permanently.
+_Avoid_: Default model, Current model
+
 ### People
 
 **User**:
@@ -57,7 +70,7 @@ _Avoid_: Poster, Owner, Creator
 
 ### Generated prose
 
-Each is written by the translator and shown as its own section of a drop.
+Each is written by the Translator and shown as its own section of a drop.
 Their boundaries are load-bearing: prose that strays across them is wrong, not
 merely untidy.
 
