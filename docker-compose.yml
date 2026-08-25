@@ -1,6 +1,9 @@
 services:
   postgres:
-    image: postgres:16
+    # pgvector/pgvector, not stock postgres: V7 does CREATE EXTENSION vector, and pgvector
+    # is not bundled with the official image. This one is the official image plus the
+    # extension, so pg_trgm (contrib) still comes along.
+    image: pgvector/pgvector:pg16
     container_name: slangdump-postgres
     environment:
       POSTGRES_DB: slangdump
