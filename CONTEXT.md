@@ -67,9 +67,12 @@ standalone single.
 _Avoid_: Record, Release, Project
 
 **Translator**:
-The model that produced a Song's translation. Part of a Song's identity, so the
-same track under two Translators is two Songs, each with its own prose and its
-own Posts.
+The model that produced a Song's translation, named by the API vendor called and
+the model that vendor was asked for. The vendor is whoever was dialled, never
+whoever made the model — the same model reached through two vendors is two
+Translators, because the price, the routing and the research tool all differ.
+Part of a Song's identity, so the same track under two Translators is two Songs,
+each with its own prose and its own Posts.
 _Avoid_: Engine, Provider (that names only half of a Translator)
 
 **Active Translator**:
