@@ -441,7 +441,21 @@ time. Do not add `--platform=arm64` anywhere yet.
 - The decisions above are conclusions from evaluated trade-offs. Before
   proposing an alternative, check whether it was already rejected. Explicitly
   rejected: **making Python async, switching to SSE or WebSockets, in-memory
-  job queues, running Flyway at application startup, and long polling.**
+  job queues, running Flyway at application startup, long polling, and
+  Elasticsearch for search.**
+- **Search runs entirely inside Neon.** `pg_trgm` for lexical matching,
+  `pgvector` for a semantic pass that fires only when the lexical one comes back
+  thin. Two things follow that are easy to re-propose by accident:
+  - **Elasticsearch was evaluated and rejected**, despite being what the phase
+    plan originally named. It is a paid service (or an operated cluster) and the
+    corpus is thousands of documents; the cost rule above applies. It stays
+    deferred, not disproven — revisit if phrase and proximity queries or real
+    CJK analyzers become necessary.
+  - **Postgres full-text search is not usable here**, so do not propose a
+    `tsvector`. The corpus is mostly Traditional Chinese and Neon's extension
+    allowlist has no Chinese tokenizer (`zhparser`, `pg_jieba`, `pgroonga` are
+    all absent), so `to_tsvector` collapses a whole sentence to one token.
+    Trigrams need no tokenizer. See `docs/adr/0003`.
 - **Retry for transient Gemini failures lives in the worker**, not in Spring.
   Only the worker can tell a transient failure from RECITATION, MAX_TOKENS or
   malformed JSON — Spring sees `502` for all of those. There are **two**
