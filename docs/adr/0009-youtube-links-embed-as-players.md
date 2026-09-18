@@ -2,9 +2,9 @@
 
 A Post's `description` is markdown in the narrow three-construct dialect defined by
 `slangdump-poster/src/lib/markdown.tsx`. That dialect gains a fourth construct: a
-YouTube URL renders as a player instead of an anchor. The URL may be a markdown
-link or bare text, and may stand alone on its line or sit inside a sentence; every
-form embeds.
+YouTube URL renders a player *beneath* its link rather than in place of it. The URL
+may be a markdown link or bare text, and may stand alone on its line or sit inside a
+sentence; every form embeds.
 
 The field was always meant to carry media. `src/types/api.ts` says so — "media
 URLs are embedded inline in the markdown `description`. File upload is out of
@@ -12,6 +12,26 @@ scope this phase." What was missing was the read path. Until now an author who
 linked the song they were writing about produced an anchor, and the reader had to
 leave the page to hear it. On a site whose entire subject is what a song's lyrics
 mean, the song is the one thing the post was already about.
+
+## The link survives the player
+
+The player is added to the link, not substituted for it. Replacing it was the first
+shape of this and it deletes authored text: `[聽這首](https://youtu.be/ID)` rendered a
+player and 聽這首 was simply gone, with nothing in the output to say a word had been
+dropped. That is the same silent failure this document objects to below — a result
+the author cannot see coming and cannot see happening.
+
+Showing it costs close to nothing, because the label is usually the URL. The editor
+configures `autolink: true, linkOnPaste: true` (`DescriptionEditor.tsx`), so an
+author who pastes a URL gets a link node whose text *is* that URL, which serializes
+to `[https://youtu.be/ID](https://youtu.be/ID)`. A bare URL is therefore anchored on
+its own text too — otherwise the same visible act of pasting a link would render two
+different ways depending on whether the row predates the editor.
+
+It also has a job when the player does not. An uploader who disabled embedding gets
+YouTube's own error inside the frame, and the way out of that is a link. The player
+keeps its corner link-out for the case where the failure is in the frame itself, and
+the anchor above it is the ordinary route.
 
 ## Position is not a test the author can pass
 
@@ -32,11 +52,12 @@ first place. Descriptions already in the database were written as plain text, an
 the guard against silently reflowing them is the YouTube-only scan below, not the
 line boundary.
 
-## A YouTube-only URL scan, not autolinking
+## A YouTube-only URL scan, not general autolinking
 
 Bare URLs embed, which means the tokenizer now reads text it previously passed
-through untouched. It is not general autolinking. A bare URL is parsed, and if it
-is not a YouTube video the characters stay literal exactly as before.
+through untouched, and a bare YouTube URL does become an anchor. What it is not is
+*general* autolinking. A bare URL is parsed, and if it is not a YouTube video the
+characters stay literal exactly as before — no anchor, no player.
 
 This is the narrowest change that reaches the legacy rows. Descriptions written
 before the WYSIWYG editor existed hold raw URLs as plain text — the editor
@@ -108,8 +129,10 @@ upload rather than the post's own content; unfurling it as a video card would be
 the first time the permalink published something it does not own.
 
 **The editor still shows a link, not a preview.** The author sees what they always
-saw. This is the same asymmetry images already have — renderable but not
-authorable — and closing it means a new Tiptap node.
+saw, and now so does the reader — the asymmetry is narrower than it was, since the
+feed shows the link too, but the preview is still missing. This is the same gap
+images already have — renderable but not authorable — and closing it means a new
+Tiptap node.
 
 **If a Content-Security-Policy is ever added, it has to know about this.** There
 is none today. One would need `frame-src https://www.youtube-nocookie.com` and
