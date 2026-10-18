@@ -398,15 +398,20 @@ Estimated $10-15/month.
   RUNBOOK 7.3 records why — an external proxy hides the real client IP from
   Vercel's own bot and WAF logic, and double-CDN caching collapses Next's
   `Vary: RSC` responses onto one cache key. This applies to the Fly-hosted API.
-- **WAF custom rule: block everything off `/api/` on the API host.** Expression
-  `(http.host eq "api.slangdump.com" and not starts_with(http.request.uri.path, "/api/"))`,
+- **WAF custom rule: block everything off `/api/v1/`, and any dot-segment, on the
+  API host.** Expression
+  `(http.host eq "api.slangdump.com" and (not starts_with(http.request.uri.path, "/api/v1/") or http.request.uri.path contains "/."))`,
   action Block. Internet scanners (`/.env`, WordPress probes like `/xmlrpc.php` and
   `wlwmanifest.xml`) and crawlers (`/robots.txt`, `/`) were each resuming a suspended
   Spring machine, which then sat idle for minutes before suspending again. Blocking
-  at Cloudflare's edge means Fly Proxy never sees them. Every legitimate route lives
-  under `/api/`; the Fly health check and Vercel's server-side fetches are
-  unaffected (the health check does not go through Cloudflare). Two consequences:
-  a Spring route outside `/api/` is unreachable publicly, and requests to
+  at Cloudflare's edge means Fly Proxy never sees them. A bare `/api/` prefix was not
+  enough: scanners adapted to `/api/.env`, `/api/dev/.env`, `/api/.git/HEAD`. The
+  `/.` clause catches dotfile probes that do sit under `/api/v1/` (`/api/v1/.env`);
+  no Spring route has a path segment starting with `.` — path variables are post
+  ids. Every legitimate route lives under `/api/v1/`; the Fly health check and
+  Vercel's server-side fetches are unaffected (the health check does not go through
+  Cloudflare). Two consequences: a Spring route outside `/api/v1/`, or with a
+  dot-leading segment, is unreachable publicly, and requests to
   `slangdump-pick-n-roll.fly.dev` skip Cloudflare entirely, so they still wake the
   machine. To trace a wake, use the prod Tomcat access log in `fly logs`
   (health probes excluded). The IP it logs is Cloudflare's edge, not the client.
