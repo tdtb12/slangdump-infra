@@ -242,6 +242,8 @@ names are the property names:
 | `SPRING_FLYWAY_URL` | Neon **direct** (no `-pooler`) | `release_command` only |
 | `INTERNAL_SERVICE_TOKEN` | shared Spring↔Python auth | both apps |
 | `TRANSLATE_API_KEY` | upstream translation provider | Python app |
+| `STORAGE_R2_ACCESS_KEY_ID` | R2 API token, scoped to the images bucket | Spring app |
+| `STORAGE_R2_SECRET_ACCESS_KEY` | same token's secret | Spring app |
 
 **This naming is the only mechanical enforcement of the Neon pooler rule.**
 Setting `spring.flyway.url` makes Flyway build its own DataSource, so it
