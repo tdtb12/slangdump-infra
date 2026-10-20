@@ -1,9 +1,10 @@
-# Post images are WebP in R2, uploaded through Spring
+# Post images are encoded in the browser and stored in R2 through Spring
 
 An author can put up to five images into a Post's description in the Daily Drop editor.
-Each image is uploaded the moment it is inserted, re-encoded by Spring to a WebP of at most
-2048 px on its long side, stored in a public Cloudflare R2 bucket under a random key, and
-embedded in the description as `![](https://img.slangdump.com/p/<uuid>.webp)`. A
+Each image is encoded by the browser to a WebP (or, on Safari and iOS, a PNG) of at most
+2048 px on its long side, uploaded the moment it is inserted, checked by Spring, stored
+unchanged in a public Cloudflare R2 bucket under a random key, and embedded in the
+description as `![](https://img.slangdump.com/p/<uuid>.webp)`. A
 `post_images` table records who uploaded each object and which Post, if any, owns it.
 
 The description already rendered `![alt](url)`; what this adds is a way to author one
@@ -19,34 +20,46 @@ domain as-is. And the browser would be talking to a third party, which the archi
 otherwise never allows — the frontend talks to its BFF and the BFF talks to Spring.
 
 The cost is the BFF's body limit. Vercel refuses function bodies over 4.5 MB before our
-code runs, while phone photos are routinely larger, and the stated limit is 10 MB. So the
-editor shrinks anything over 4 MB or over 2048 px in the browser before sending it
-(`slangdump-poster/src/lib/shrinkImage.ts`). Nothing is lost by this that would have been
-kept: Spring scales to the same 2048 px edge regardless. The 10 MB limit is therefore what
-an author may *pick*, not what crosses the wire.
+code runs, while phone photos are routinely larger, and an author may pick up to 10 MB.
+The browser's encoding (below) is what gets every image under it: Spring takes at most
+4 MB. The 10 MB limit is therefore what an author may *pick*, not what crosses the wire.
 
-## Spring re-encodes every image
+## The browser encodes, Spring only checks
 
-Spring reads the format from the bytes, refuses anything that is not JPEG, PNG, GIF or
-WebP, refuses a header declaring more than 40 megapixels before decoding it (a few hundred
-bytes of PNG can declare a canvas that decodes to gigabytes), draws the first frame onto a
-plain ARGB canvas and encodes that as WebP. Handing the encoder pixels rather than the file
-is what strips EXIF; there is no metadata-scrubbing step to get wrong.
+The editor (`slangdump-poster/src/lib/encodeImage.ts`) draws every image onto a canvas at
+no more than 2048 px on its long edge and encodes it as WebP at quality 0.8, or 0.6 if
+that is over 4 MB. Drawing pixels is what strips EXIF, including a phone photo's GPS
+position, and what keeps only an animation's first frame. Images are encoded one at a time:
+a phone photo decodes to 50-200 MB of pixels, and five at once can make iOS kill the tab.
 
-Animated GIFs keep only their first frame. Animated WebP output was possible but heavier to
-encode and to serve, and nothing in a post about lyrics needs it.
+Safari cannot encode WebP from a canvas, and every browser on iOS is Safari underneath:
+asking for WebP quietly returns a PNG. That PNG is accepted as is. PNG has no quality
+setting and a 2048 px photo is typically 5-7 MB as PNG, so an oversized one is redrawn at
+three quarters of the size until it fits, giving up below 1024 px. Safari photos therefore
+land around 1152-1536 px and weigh more in R2 than a WebP would. Bundling a WebAssembly
+WebP encoder for Safari was rejected: it would be an extra frontend dependency for a
+difference nobody reading a post would notice.
 
-The encoder is `webp-imageio`, which ships libwebp for linux x86_64 and aarch64 inside its
-jar. Fly runs amd64 and the later ECS plan runs Graviton; neither needs a Dockerfile change.
-It is pinned below its latest release because later versions depend on a newer
-`kotlin-stdlib` than this build compiles against.
+Spring does no image processing and has no image library. `UploadedImage.kt` reads the
+container headers only: a still WebP or PNG, at most 2048 px on a side, with nothing after
+the image, and no metadata or animation chunks (`EXIF`, `XMP `, `ANIM` in WebP; `eXIf`,
+text and APNG chunks in PNG). That makes the browser's stripping enforceable: a
+hand-built upload cannot publish GPS data or an animation under our domain. Because
+nothing is decoded, there is no decompression bomb to guard against, and the header check
+caps what any reader's browser will decode at 2048² pixels.
+
+Encoding on the server was the first design and was rejected: it needed `webp-imageio`, a
+JNI wrapper shipping native libwebp inside the jar, plus the decode and encode CPU and
+memory on a 1 GB machine. What the browser-side design gives up is a check of the pixels
+themselves: a corrupt bitstream in a well-formed container is stored, and browsers fail to
+draw it, which harms only the author who uploaded it.
 
 ## Images are served by R2, never by Spring
 
 The bucket is public on a custom domain. An image view never reaches a Fly machine, so
 reading a feed full of images cannot wake a suspended Spring app, and R2's free egress
 covers the traffic. Keys are random UUIDs and never reused, so objects are served
-`immutable`.
+`immutable`. The key's extension is the format, `.webp` or `.png`.
 
 `next/image` is not used. It would spend Vercel's image-optimisation quota re-encoding
 images that are already optimised WebP.
@@ -63,7 +76,8 @@ There is deliberately no scheduled sweeper. The residue is an author who uploads
 never posts again, and it is bounded: uploads are capped at 10 per author per Taipei day —
 twice the five a post can hold, so a full post plus replacing every image once —
 and the cap counts deleted uploads too, so an upload/delete loop cannot run free. At
-WebP sizes that is far inside R2's 10 GB free tier. Adding a sweeper would mean a second
+most that is 40 MB per author per day, and a typical encoded image is a few hundred KB,
+far inside R2's 10 GB free tier. Adding a sweeper would mean a second
 scheduled job, run concurrently on both Fly machines, to recover storage that costs nothing.
 Revisit if R2 usage ever shows up on a bill.
 
