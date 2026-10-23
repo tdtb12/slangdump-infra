@@ -242,6 +242,7 @@ names are the property names:
 | `SPRING_FLYWAY_URL` | Neon **direct** (no `-pooler`) | `release_command` only |
 | `INTERNAL_SERVICE_TOKEN` | shared Spring↔Python auth | both apps |
 | `TRANSLATE_API_KEY` | upstream translation provider | Python app |
+| `ADMIN_API_TOKEN` | manager bearer token for the admin port (`openssl rand -hex 32`) | Spring app |
 
 **This naming is the only mechanical enforcement of the Neon pooler rule.**
 Setting `spring.flyway.url` makes Flyway build its own DataSource, so it
@@ -348,8 +349,8 @@ role**, not the task role. This is a common mistake.
   already been sent, and Fly Proxy's idle decision counts proxied requests only,
   so it cannot see that thread and may idle the machine mid-translation.
   `"stop"` would SIGTERM the JVM, skipping the catch blocks and stranding the
-  song in `PENDING` forever — nothing sweeps or retries it, and it burns the
-  author's daily post slot. Suspend freezes instead; on resume the dead socket
+  song in `PENDING` — nothing sweeps it, only a manager re-translation
+  recovers it, and it burns the author's daily post slot. Suspend freezes instead; on resume the dead socket
   throws into the catch block and the song lands on `FAILED`.
   **Keep both machines.** Suspended machines bill no compute, so the second one
   is nearly free, and it is what makes `strategy = "rolling"` actually roll.
@@ -382,6 +383,15 @@ role**, not the task role. This is a common mistake.
   is `started` and uvicorn logs `Uvicorn running`. `::` would be correct only
   for direct `.internal` 6PN (IPv6), which this architecture deliberately does
   not use.
+
+- **The Spring admin port (9090) is private by omission.** Manager routes
+  (`/admin/songs`, re-translating FAILED or stuck-PENDING songs) are served only on a
+  second Tomcat connector that `fly.toml` deliberately does not declare. Fly Proxy
+  publishes only declared ports, so 9090 is reachable over 6PN alone, via
+  `fly proxy` (`scripts/retranslate.sh`). **Never add a `[[services]]` for it.** The
+  port is one layer and `ADMIN_API_TOKEN` is the other: every app in the org can reach
+  6PN, so the port by itself does not make anything manager-only. Under `prod` the app
+  refuses to start without the token (`AdminTokenGuard`).
 
 Estimated $10-15/month.
 
@@ -485,10 +495,11 @@ time. Do not add `--platform=arm64` anywhere yet.
 
   Spring does **not** retry the worker call; that was not rejected, it simply
   addresses a *different* failure (an unreachable worker) which remains
-  unaddressed. Note also that a song which exhausts its retries stays `FAILED`
-  forever and is reused as-is by every later post of it (RUNBOOK Phase 9
-  item 4) — which is why a transient failure must never be classified as
-  permanent.
+  unaddressed. Note also that a song which exhausts its retries stays `FAILED`,
+  reused as-is by every later post of it, until a manager re-translates it
+  through the admin port (RUNBOOK Phase 9 item 4). That needs the lyrics pasted
+  again, because songs never store them, so a transient failure must still never
+  be classified as permanent.
 - Cost-sensitive. Justify why the current approach is insufficient before
   introducing any new paid service (Redis, SQS, extra load balancers).
 - Prefer "simple now, easy to move later" over "perfect now".
