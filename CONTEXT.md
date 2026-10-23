@@ -50,6 +50,14 @@ One user's drop of a Song on a given day: the social wrapper carrying author,
 description and likes. Never carries a translation of its own.
 _Avoid_: Drop (in code), Entry
 
+**Image**:
+A picture an Author uploaded into a Post's description, shown where the Author
+placed it. Belongs to the Author while the Post is still being written —
+**Unattached** — and to the Post, permanently, once it is dropped. Only an
+Author's own Images can appear in their Post, at most five. An Unattached Image
+the Post did not end up using is discarded when the Post is dropped.
+_Avoid_: Attachment, Upload, Media, Photo
+
 **Rendition**:
 A distinct recorded version of the same song — radio edit, clean version, live
 cut, remix. Deliberately **not** modelled: renditions are distinguished only by
